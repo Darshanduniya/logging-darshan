@@ -1,0 +1,82 @@
+from datetime import datetime, timedelta
+
+from airflow import DAG
+
+from airflow.operators.python_operator import PythonOperator
+
+from airflow.hooks.postgres_hook import PostgresHook
+
+from airflow.utils.log.logging_mixin import LoggingMixin
+
+# Define default_args for the DAG
+
+default_args = {
+
+    'owner': 'airflow',
+
+    'start_date': datetime(2023, 1, 1),
+
+    'depends_on_past': False,
+
+    'retries': 1,
+
+    'retry_delay': timedelta(minutes=5)
+
+}
+
+# Define the DAG
+
+dag = DAG(
+
+    'scan_airflow_logs',
+
+    default_args=default_args,
+
+    schedule_interval=timedelta(hours=1),  # Set the schedule interval as needed
+
+)
+
+# Define the Python function to scan and insert logs into PostgreSQL
+
+def scan_and_insert_logs(**kwargs):
+
+    # Create a PostgresHook to connect to PostgreSQL
+
+    pg_hook = PostgresHook(postgres_conn_id='my_postgres_conn')  # Update with your own connection ID
+
+    # Scan the Airflow logs
+
+    log_entries = LoggingMixin().log_reader.get_log_entries()
+
+    # Iterate through the log entries and insert them into PostgreSQL
+
+    for log_entry in log_entries:
+
+        log_message = log_entry.msg
+
+        dag_id = log_entry.dag_id
+
+        # Insert the log message and DAG ID into the PostgreSQL table
+
+        sql = "INSERT INTO my_logs_table (log_message, dag_id) VALUES (%s, %s);"
+
+        pg_hook.run(sql, parameters=(log_message, dag_id))
+
+# Define the PythonOperator to execute the scan_and_insert_logs function
+
+scan_logs_task = PythonOperator(
+
+    task_id='scan_logs_task',
+
+    python_callable=scan_and_insert_logs,
+
+    provide_context=True,  # Pass the context to the Python function
+
+    dag=dag
+
+)
+
+# Set the task dependencies
+
+scan_logs_task
+
